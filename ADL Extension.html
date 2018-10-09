@@ -1,0 +1,220 @@
+<html><head>
+<meta http-equiv="Content-Language" content="en-us">
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<title>Call for Core Language Proposals</title>
+</head>
+
+<body>
+
+<table style="border-collapse: collapse" width="619" cellspacing="0" cellpadding="0" bordercolor="#111111" border="0">
+    <tbody><tr>
+      <td width="167" valign="top" align="left">Document number:</td>
+      <td width="452"><i>Nnnnn=yy-nnnn</i></td>
+    </tr>
+    <tr>
+      <td width="167" valign="top" align="left">Date:</td>
+      <td width="452"><i>2018-10-09</i></td>
+    </tr>
+    <tr>
+      <td width="167" valign="top" align="left">Project:</td>
+      <td width="452">Programming Language C++, Core Working Group</td>
+    </tr>
+    <tr>
+      <td width="167" valign="top" align="left">Reply-to:</td>
+      <td width="452"><i>redradist@gmail.com; Denis Kotov</i></td>
+    </tr>
+  </tbody>
+</table>
+
+<h1>A Proposal to Extend an ADL as Core Language Feature</h1>
+
+<h2><b>I. Introduction</b></h2>
+<p><i>Extend ADL for adding extension methods and search ADL for specific template implementation. </i> </p>
+<h2><b>II. Motivation and Scope</b></h2>
+<p><b>Propousal for extension methods like.</b>
+  Lets consider the following example:
+<blockquote>
+  <tt>
+    <pre>
+    namespace DeviceManager {
+      class Device {
+        public:
+          ... // Other member functions
+          uint32_t getId() const {
+            return id_;
+          }
+        private:
+          ... // Other member variables
+          uint32_t id_;
+      };
+
+      using DeviceList = std::vector&lt;Device&gt;;
+
+      Device mergeDeviceInfo(const Device & _first, const Device & _second) {
+        ... // Implementation
+      }
+    }
+
+    int main() {
+      DeviceManager::DeviceList deviceList;
+      ... // Some work
+      auto foundDeviceIter0 = std::find_if(deviceList.begin(), deviceList.end(), [=] {
+        ... // Some first creteria
+      });
+      auto foundDeviceIter1 = std::find_if(deviceList.begin(), deviceList.end(), [=] {
+        ... // Some second creteria
+      });
+      if (deviceList.end() != foundDeviceIter0 && deviceList.end() != foundDeviceIter1) {
+        DeviceManager::Device mergedDevice = DeviceManager::mergeDeviceInfo(*foundDeviceIter0, *foundDeviceIter1);
+        ... // Some other work
+      }
+    }
+    </pre>
+  </tt>
+</blockquote>
+
+As you can see in case one helper function it is easy to manipulate and use it, but in case of a lot of functions it would be better to support some kind of extension methods:
+<blockquote>
+  <tt>
+    <pre>
+    namespace DeviceManager {
+      class Device {
+        public:
+          ... // Other member functions
+          uint32_t getId() const {
+            return id_;
+          }
+        private:
+          ... // Other member variables
+          uint32_t id_;
+      };
+
+      using DeviceList = std::vector&lt;Device&gt;;
+
+      // 1. If it is called by reference type prefer this overload function
+      Device mergeDeviceInfo(const Device & _first, const Device & _second) {
+        ... // Implementation
+      }
+      // 2. If it is called by pointer type prefer this overload function
+      Device mergeDeviceInfo(const Device * _firstPtr, const Device * _secondPtr) {
+        ... // Implementation
+      }
+    }
+
+    int main() {
+      DeviceManager::DeviceList deviceList;
+      ... // Some work
+      auto foundDeviceIter0 = std::find_if(deviceList.begin(), deviceList.end(), [=] {
+        ... // Some first creteria
+      });
+      auto foundDeviceIter1 = std::find_if(deviceList.begin(), deviceList.end(), [=] {
+        ... // Some second creteria
+      });
+      if (deviceList.end() != foundDeviceIter0 && deviceList.end() != foundDeviceIter1) {
+        // 1. Overload function for references if called
+        // ADL will search in dependent scopes also for calling functions by object reference
+        DeviceManager::Device & firstFoundDevice = *foundDeviceIter0;
+        DeviceManager::Device & secondFoundDevice = *foundDeviceIter1;
+        DeviceManager::Device mergedDevice = firstFoundDevice.mergeDeviceInfo(secondFoundDevice);
+
+        // 2. Overload function for pointers if called
+        // ADL will search in dependent scopes lso for calling functions by object pointer
+        DeviceManager::Device mergedDevice = foundDeviceIter0->mergeDeviceInfo(*foundDeviceIter1);
+        ... // Some other work
+      }
+    }
+    </pre>
+  </tt>
+</blockquote>
+
+<b>Propousal for extension of ADL on template parameter.</b>
+  Lets consider the following example:
+<blockquote>
+  <tt>
+    <pre>
+    namespace IPCBus {
+      class IClient {
+        public:
+          ... // Other member functions
+          template &lt;typename TClient&gt;
+          static std::shared_ptr&lt;IClient&gt; buildClient() {
+            auto client = std::shared_ptr(new TClient);
+            ... // IMPORTANT THINGS AFTER INITIALIZATION. CANNOT BE SKIPED !!
+            return client;
+          }
+        protected:
+          Client() = default;
+      };
+    }  // namespace IPCBus
+
+    class RealClient : public IClient {
+      public:
+       RealClient()
+         : IClient() {
+       }
+    };
+
+    using namespace std;
+
+    int main() {
+      auto realClient = make_shared&lt;RealClient&gt;();
+      // WE MISSED THE VERY IMPORTANT STEPS IN CREATION OF OBJECT !!
+    }
+    </pre>
+  </tt>
+</blockquote>
+
+As you can see in case one helper function it is easy to manipulate and use it, but in case of a lot of functions it would be better to support some kind of extension methods:
+<blockquote>
+  <tt>
+    <pre>
+    namespace IPCBus {
+      class IClient {
+        public:
+          ... // Other member functions
+          template &lt;typename TClient&gt;
+          static std::shared_ptr&lt;IClient&gt; buildClient() {
+            auto client = std::shared_ptr(new TClient);
+            ... // IMPORTANT THINGS AFTER INITIALIZATION. CANNOT BE SKIPED !!
+            return client;
+          }
+        protected:
+          Client() = default;
+      };
+
+      template &lt;typename T, typename ... TArgs&gt;
+      std::shared_ptr&lt;T&gt; make_shared(TArgs&&... _args) {
+        return IClient::buildClient(std::forward&lt;TArgs&gt;(_args)...);
+      }
+    }  // namespace IPCBus
+
+    class RealClient : public IClient {
+      public:
+       RealClient()
+         : IClient() {
+       }
+    };
+
+    using namespace std;
+
+    int main() {
+      auto realClient = make_shared&lt;RealClient&gt;();
+      // We use our own version of make_shared that is delegate creation of object to builder method
+      // Cool !!
+    }
+    </pre>
+  </tt>
+</blockquote>
+
+As <b>Herb Sutter</b> said at <b>CppCon 2017: Herb Sutter “Meta: Thoughts on generative C++”</b>:
+"Abstraction are hiders by definition. If they did not do this they are useless ..."
+"It's not the problem. It is the point."
+
+I see this suggestion to extend ADL search on caller object and on template parameter as simplifier for Library Writters and also General Programmers
+</p>
+<h2><b>III. Impact On the Standard</b></h2>
+<p>It is depends only on Core Language Specification</p>
+<h2><b>IV. Design Decisions</b></h2>
+<p>Those kind of design decisions was chosen according the experience as the programmer</p>
+
+</body></html>
